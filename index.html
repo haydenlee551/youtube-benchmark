@@ -40,9 +40,11 @@ body { font-family: var(--font); background: var(--bg-primary); color: var(--tex
 .sidebar-logo { font-size: 14px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.3px; }
 .sidebar-count { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
 .sidebar-list { flex: 1; overflow-y: auto; padding: 8px; }
-.sidebar-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.1s; text-decoration: none; color: var(--text-secondary); font-size: 13px; }
+.sidebar-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: grab; transition: background 0.1s, transform 0.15s, opacity 0.15s; text-decoration: none; color: var(--text-secondary); font-size: 13px; }
 .sidebar-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 .sidebar-item.active { background: var(--accent-dim); color: var(--accent-hover); }
+.sidebar-item.dragging { opacity: 0.4; transform: scale(0.95); }
+.sidebar-item.drag-over { border-top: 2px solid var(--accent); margin-top: -2px; }
 .sidebar-thumb { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--bg-tertiary); }
 .sidebar-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .sidebar-subs { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; }
@@ -529,14 +531,57 @@ function render() {
 }
 
 function renderSidebar() {
-    document.getElementById('sidebarList').innerHTML = channels.map(ch => `
-        <div class="sidebar-item" data-id="${ch.channel_id}" onclick="scrollToChannel('${ch.channel_id}')">
-            ${ch.channel_thumbnail ? `<img class="sidebar-thumb" src="${ch.channel_thumbnail}">` : '<div class="sidebar-thumb"></div>'}
+    const list = document.getElementById('sidebarList');
+    list.innerHTML = channels.map(ch => `
+        <div class="sidebar-item" data-id="${ch.channel_id}" draggable="true" onclick="scrollToChannel('${ch.channel_id}')">
+            ${ch.channel_thumbnail ? `<img class="sidebar-thumb" src="${ch.channel_thumbnail}" draggable="false">` : '<div class="sidebar-thumb"></div>'}
             <span class="sidebar-name">${esc(ch.channel_name)}</span>
             <span class="sidebar-subs">${fmt(ch.subscriber_count)}</span>
             <button class="sidebar-delete" onclick="event.stopPropagation();deleteChannel('${ch.channel_id}')" title="삭제">&times;</button>
         </div>
     `).join('');
+    initSidebarDrag();
+}
+
+// ── Sidebar Drag & Drop ──
+function initSidebarDrag() {
+    let draggedId = null;
+    const items = document.querySelectorAll('.sidebar-item[draggable]');
+    items.forEach(item => {
+        item.addEventListener('dragstart', e => {
+            draggedId = item.dataset.id;
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging');
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('drag-over'));
+        });
+        item.addEventListener('dragover', e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            item.classList.add('drag-over');
+        });
+        item.addEventListener('dragleave', () => {
+            item.classList.remove('drag-over');
+        });
+        item.addEventListener('drop', e => {
+            e.preventDefault();
+            item.classList.remove('drag-over');
+            const targetId = item.dataset.id;
+            if (draggedId && draggedId !== targetId) {
+                const fromIdx = channels.findIndex(c => c.channel_id === draggedId);
+                const toIdx = channels.findIndex(c => c.channel_id === targetId);
+                if (fromIdx >= 0 && toIdx >= 0) {
+                    const [moved] = channels.splice(fromIdx, 1);
+                    channels.splice(toIdx, 0, moved);
+                    persist();
+                    render();
+                }
+            }
+            draggedId = null;
+        });
+    });
 }
 
 function renderContent() {
@@ -633,6 +678,7 @@ function renderContent() {
             <div class="topbar-row">
                 <div><h1>Channel Benchmark</h1><div class="subtitle">${channels.length}개 채널 · ${new Date().toLocaleDateString('ko-KR')}</div></div>
                 <div class="topbar-actions">
+                    <button class="btn" onclick="exportExcel()">Excel 내보내기</button>
                     <button class="btn" onclick="exportData()">JSON 내보내기</button>
                     <button class="btn" onclick="document.getElementById('importFile').click()">JSON 가져오기</button>
                     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
@@ -667,6 +713,53 @@ function renderContent() {
 function scrollToChannel(id) {
     const el = document.getElementById('ch-' + id);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Excel Export ──
+function exportExcel() {
+    // CSV with BOM for Excel 한글 호환
+    const BOM = '\uFEFF';
+    const headers = [
+        '채널명','핸들','채널URL','구독자수','영상수','총조회수','개설일','벤치마킹일','채널태그',
+        '인기1_제목','인기1_조회수','인기1_URL','인기1_태그',
+        '인기2_제목','인기2_조회수','인기2_URL','인기2_태그',
+        '인기3_제목','인기3_조회수','인기3_URL','인기3_태그',
+        '최근1_제목','최근1_조회수','최근1_URL','최근1_태그',
+        '최근2_제목','최근2_조회수','최근2_URL','최근2_태그',
+        '최근3_제목','최근3_조회수','최근3_URL','최근3_태그',
+    ];
+
+    const csvCell = v => {
+        const s = String(v ?? '').replace(/"/g, '""');
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+    };
+
+    const rows = channels.map(ch => {
+        const videoFields = (videos) => {
+            const result = [];
+            for (let i = 0; i < 3; i++) {
+                const v = videos?.[i];
+                result.push(v?.title || '', v?.view_count || '', v?.url || '', (v?.tags || []).join(' / '));
+            }
+            return result;
+        };
+        return [
+            ch.channel_name, ch.channel_handle, ch.channel_url,
+            ch.subscriber_count, ch.video_count, ch.total_view_count,
+            ch.channel_creation_date, ch.benchmark_date,
+            (ch.channel_tags || []).join(' / '),
+            ...videoFields(ch.popular_videos),
+            ...videoFields(ch.recent_videos),
+        ].map(csvCell).join(',');
+    });
+
+    const csv = BOM + headers.join(',') + '\n' + rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `benchmark_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    toast('Excel(CSV) 내보내기 완료');
 }
 
 // ── Import / Export ──
