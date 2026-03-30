@@ -486,7 +486,7 @@ function deleteChannel(channelId) {
 }
 
 async function refreshChannel(channelId) {
-    if (!apiKey) { toast('API 키를 설정해주세요'); return; }
+    if (!apiKeys.length) { toast('API 키를 설정해주세요'); return; }
     const ch = channels.find(c => c.channel_id === channelId);
     if (!ch) return;
     toast(`${ch.channel_name} 새로고침 중...`);
