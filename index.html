@@ -370,10 +370,10 @@ async function fetchChannelData(handle) {
     const stats = ch.statistics;
     const branding = ch.brandingSettings?.channel || {};
 
-    const popSearch = await ytApi('search', { part: 'snippet', channelId, order: 'viewCount', type: 'video', maxResults: 3 });
+    const popSearch = await ytApi('search', { part: 'snippet', channelId, order: 'viewCount', type: 'video', maxResults: 5 });
     const popIds = (popSearch.items || []).map(i => i.id.videoId).filter(Boolean);
 
-    const recSearch = await ytApi('search', { part: 'snippet', channelId, order: 'date', type: 'video', maxResults: 3 });
+    const recSearch = await ytApi('search', { part: 'snippet', channelId, order: 'date', type: 'video', maxResults: 5 });
     const recIds = (recSearch.items || []).map(i => i.id.videoId).filter(Boolean);
 
     const allIds = [...new Set([...popIds, ...recIds])];
@@ -721,12 +721,16 @@ function exportExcel() {
     const BOM = '\uFEFF';
     const headers = [
         '채널명','핸들','채널URL','구독자수','영상수','총조회수','개설일','벤치마킹일','채널태그',
-        '인기1_제목','인기1_조회수','인기1_URL','인기1_태그',
-        '인기2_제목','인기2_조회수','인기2_URL','인기2_태그',
-        '인기3_제목','인기3_조회수','인기3_URL','인기3_태그',
-        '최근1_제목','최근1_조회수','최근1_URL','최근1_태그',
-        '최근2_제목','최근2_조회수','최근2_URL','최근2_태그',
-        '최근3_제목','최근3_조회수','최근3_URL','최근3_태그',
+        '인기1_제목','인기1_업로드일','인기1_조회수','인기1_URL','인기1_태그',
+        '인기2_제목','인기2_업로드일','인기2_조회수','인기2_URL','인기2_태그',
+        '인기3_제목','인기3_업로드일','인기3_조회수','인기3_URL','인기3_태그',
+        '인기4_제목','인기4_업로드일','인기4_조회수','인기4_URL','인기4_태그',
+        '인기5_제목','인기5_업로드일','인기5_조회수','인기5_URL','인기5_태그',
+        '최근1_제목','최근1_업로드일','최근1_조회수','최근1_URL','최근1_태그',
+        '최근2_제목','최근2_업로드일','최근2_조회수','최근2_URL','최근2_태그',
+        '최근3_제목','최근3_업로드일','최근3_조회수','최근3_URL','최근3_태그',
+        '최근4_제목','최근4_업로드일','최근4_조회수','최근4_URL','최근4_태그',
+        '최근5_제목','최근5_업로드일','최근5_조회수','최근5_URL','최근5_태그',
     ];
 
     const csvCell = v => {
@@ -737,9 +741,9 @@ function exportExcel() {
     const rows = channels.map(ch => {
         const videoFields = (videos) => {
             const result = [];
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < 5; i++) {
                 const v = videos?.[i];
-                result.push(v?.title || '', v?.view_count || '', v?.url || '', (v?.tags || []).join(' / '));
+                result.push(v?.title || '', v?.upload_date || '', v?.view_count || '', v?.url || '', (v?.tags || []).join(' / '));
             }
             return result;
         };
